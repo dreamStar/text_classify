@@ -1,2 +1,5 @@
-embedding/*
-*.pyc
+*
+!.gitignore
+!cnn.py
+!data_reader.py
+!KaggleWord2VecUtility.py

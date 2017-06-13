@@ -10,6 +10,7 @@ import sys
 import math
 import random
 import numpy as np
+import cPickle as pickle
 
 unknown_sym = "<unknown>"
 padding_sym = "<pading>"
@@ -77,7 +78,7 @@ class DataReader(object):
         # print("vocab_size:%d"%vocab_size)
         # print("words:")
         # print(words)
-        print ("word sum : %d "%(len(words)+2))
+        print ("word dict sum : %d "%(len(words)+2))
         id2word = {0:padding_sym,1:unknown_sym}
         word2id = {padding_sym:0,unknown_sym:1}
         for i in xrange(len(words)):
@@ -101,7 +102,7 @@ class DataReader(object):
 
     #将数据data_set和标签label_set按照指定比例分割为测试集和训练集
     @staticmethod
-    def split_data(data_set,label_set,train_rate=0.7,shuffle=True):
+    def split_data(data_set,label_set,train_rate=0.9,shuffle=True):
         sample_num = len(data_set)
         train_num = int(sample_num * train_rate)
         test_num = sample_num - train_num
@@ -146,8 +147,70 @@ class DataReader(object):
                 end_index = min((batch_num + 1) * batch_size, data_size)
                 yield (shuffled_x[start_index:end_index],shuffled_y[start_index:end_index])
 
+    @staticmethod
+    def static_sentence_len(sentences):
+        bin_max = 100
+        bins = [0]*bin_max
+        sum = 0
+        for sen in sentences:
+            sum += len(sen)
+            index = int(math.floor(len(sen)/10))
+
+            bins[index if index < bin_max else bin_max-1] += 1
+        avg = sum / len(sentences)
+        print("sentences sum:%d"%len(sentences))
+        print("sentences avg len:" + str(avg))
+        for i in xrange(bin_max-1):
+            print("len < %d : %d" %((i+1)*10,bins[i]))
+        print("len >= %d : %d" %((bin_max-1)*10,bins[bin_max-1]))
+
+    @staticmethod
+    def load_dict(file_prefix):
+        #emb = pickle.load(file_prefix+'_emb')
+        word2id = pickle.load(open(file_prefix+'_word2id','r'))
+        id2word = pickle.load(open(file_prefix+'_id2word','r'))
+        return word2id,id2word
+
+    @staticmethod
+    def read_data(train_filename,out_prefix):
+        data = DataReader.read_file(train_filename,True)
+        id2word,word2id = DataReader.build_dict(data['samples'],0.8);
+
+        DataReader.static_sentence_len(data['samples'].values())
+
+        #max_len = max([len(x) for x in data['samples'].values()])
+        max_len =500
+
+        train_data , test_data = DataReader.split_data(data['samples'],data['labels'])
+
+        print("word sample: ")
+        print(train_data['x'][0])
+
+        train_data['x'] = DataReader.parse2index(train_data['x'],word2id,max_len)
+        test_data['x'] = DataReader.parse2index(test_data['x'],word2id,max_len)
+        print("id sample: ")
+        print(train_data['x'][0])
+        #test_data = DataReader.read_file(test_filename,True)
+        #test_data = DataReader.parse2index(test_data,word2id)
+        pickle.dump(train_data,open(out_prefix+'_train_data','w'),True)
+        pickle.dump(test_data,open(out_prefix+'_valid_data','w'),True)
+        pickle.dump(id2word,open(out_prefix+'_id2word','w'),True)
+        pickle.dump(word2id,open(out_prefix+'_word2id','w'),True)
+
+        #print("train_data:")
+        #print(train_data)
+
+        return train_data,test_data,id2word,word2id
+
+    @staticmethod
+    def load_data(file_prefix):
+        train_data = pickle.load(open(file_prefix+'_train_data','r'))
+        test_data = pickle.load(open(file_prefix+'_valid_data','r'))
+        return train_data,test_data
+
 
 if __name__ == "__main__":
     filename = sys.argv[1]
-    data = DataReader.readFile(filename)
-    DataReader.buildDict(data)
+    out_prefix = sys.argv[2]
+    data = DataReader.read_data(filename,out_prefix)
+    #DataReader.buildDict(data)

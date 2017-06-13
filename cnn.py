@@ -136,6 +136,8 @@ class Cnn_text_classifier(object):
 
 
     def train(self,train_set,test_set):
+        print("train_set sum:%d"%len(train_set['x']))
+        print("valid_set sum:%d"%len(valid_set['x']))
 
         self.sess.run(tf.global_variables_initializer())
         self.sess.run(tf.local_variables_initializer())
@@ -190,17 +192,21 @@ def read_data(train_filename):
 
 
 if __name__ == "__main__":
-    train_filename = sys.argv[1]
+    #train_filename = sys.argv[1]
     #test_filename = sys.argv[2]
-    train_set,test_set,id2word,word2id = read_data(train_filename)
+    #train_set,test_set,id2word,word2id = read_data(train_filename)
+    obj_prefix = sys.argv[1]
 
-    seq_len = max([len(x) for x in train_set['x']])
+    word2id,id2word = DataReader.load_dict(obj_prefix)
+    train_set,valid_set = DataReader.load_data(obj_prefix)
+
+    #seq_len = max([len(x) for x in train_set['x']])
 
     config = {
         'drop_out_keep_prob' : 0.5,
         'emb_dim' : 128,
         'vocab_size' : len(word2id),
-        'seq_len' : seq_len,
+        'seq_len' : 500,
         'filter_sizes': [3,4,5],
         'num_filters': 128,
         'epoch':200,
@@ -212,4 +218,4 @@ if __name__ == "__main__":
     }
 
     cnn = Cnn_text_classifier(tf.Session(),config)
-    cnn.train(train_set,test_set)
+    cnn.train(train_set,valid_set)

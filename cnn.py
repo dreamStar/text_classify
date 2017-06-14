@@ -5,6 +5,7 @@ from data_reader import DataReader
 import math
 import sys
 import numpy as np
+from tensorflow.contrib.tensorboard.plugins import projector
 
 class Cnn_text_classifier(object):
     def __init__(self,sess,config):
@@ -21,8 +22,8 @@ class Cnn_text_classifier(object):
         #self.drop_out_keep_prob = tf.constant(config['drop_out_keep_prob']);
         #通过输入向量查找embedding
         with tf.device('/cpu:0'), tf.name_scope("embeding"):
-            emb = tf.Variable(tf.random_uniform([config['vocab_size'],config['emb_dim']],-1.0,1.0))
-            emb_x = tf.nn.embedding_lookup(emb,self.input_x)
+            self.emb = tf.Variable(tf.random_uniform([config['vocab_size'],config['emb_dim']],-1.0,1.0))
+            emb_x = tf.nn.embedding_lookup(self.emb,self.input_x)
             emb_x_expand = tf.expand_dims(emb_x,-1)
 
         #进行卷积
@@ -70,23 +71,29 @@ class Cnn_text_classifier(object):
         with tf.name_scope("output"):
             out_w = tf.Variable(tf.truncated_normal([filter_num_all,1],stddev=0.1),name="out_w")
             out_b = tf.Variable(tf.constant(0.1,shape=[1]),name="out_b")
+            self.variable_summaries(out_w,'out_w')
+            self.variable_summaries(out_b,'out_b')
             logits = tf.nn.xw_plus_b(h_drop,out_w,out_b,name="score")
 
 
         with tf.name_scope("loss"):
             losses = tf.nn.sigmoid_cross_entropy_with_logits(logits=logits,labels=self.input_y)
             self.loss = tf.reduce_sum(losses)
+            self.variable_summaries(self.loss,'loss')
 
         with tf.name_scope("prediction"):
             self.scores = tf.sigmoid(logits,name='scores');
             self.predict = tf.greater(self.scores,self.config['thr'])
+            self.variable_summaries(self.scores,'scores')
 
         with tf.name_scope("statistics"):
             correct = tf.equal(self.predict,tf.equal(self.input_y,1.0))
             self.accuracy = tf.reduce_mean(tf.cast(correct,'float32'))
-            self.auc,_ = tf.metrics.auc(self.input_y,self.scores)
+            _,self.auc = tf.metrics.auc(self.input_y,self.scores)
+
             tf.summary.scalar("accuracy",self.accuracy)
             tf.summary.scalar("ROC",self.auc)
+
 
         self.optimizer()
         self.saver = tf.train.Saver(tf.global_variables())
@@ -95,7 +102,7 @@ class Cnn_text_classifier(object):
                                       self.sess.graph)
         self.test_writer = tf.summary.FileWriter(self.config['out_path'] + '/test_summary',
                                       self.sess.graph)
-
+        self.emb_visual()
 
     def optimizer(self):
         self.global_step = tf.Variable(0,name="global_step",trainable=False)
@@ -109,12 +116,15 @@ class Cnn_text_classifier(object):
             self.input_y:y_batch,
             self.drop_out_keep_prob:self.config['drop_out_keep_prob']
         }
-        _,step,loss,scores,summary = self.sess.run([self.train_op,self.global_step,self.loss,self.scores,self.merged],feed)
+        _,step,loss,scores,summary,auc = self.sess.run([self.train_op,self.global_step,self.loss, \
+            self.scores,self.merged,self.auc],feed)
         print("step %d loss: %f" % (step,loss))
         tmp = np.abs(np.array(scores).reshape(-1) - np.array(y_batch).reshape(-1))
         acc = np.mean(map(lambda x: 1 if x < self.config['thr'] else 0, tmp))
         print("accuracy:%f"%(acc))
         self.train_writer.add_summary(summary,step);
+
+        print("auc:%f"%(auc))
 
         if step % self.config['check_step'] == 0 :
             path = self.saver.save(self.sess,self.config['out_path']+"/checkpoint",global_step=step)
@@ -130,6 +140,8 @@ class Cnn_text_classifier(object):
         #self.auc,_ = tf.metrics.auc(self.input_y,self.scores)
         step,loss,scores,summary = self.sess.run([self.global_step,self.loss,self.scores,self.merged],feed)
         self.test_writer.add_summary(summary,step)
+
+        projector.visualize_embeddings(self.test_writer,self.projector_conf)
         #self.train_writer.add_summary(auc,step)
         print("test loss:%f"%(loss))
 
@@ -152,6 +164,7 @@ class Cnn_text_classifier(object):
         [step] = self.sess.run([self.global_step])
         path = self.saver.save(self.sess,self.config['out_path']+"/checkpoint",global_step = step)
 
+
     def variable_summaries(self,var,name):
         """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
         with tf.name_scope('summaries'):
@@ -163,6 +176,14 @@ class Cnn_text_classifier(object):
         tf.summary.scalar(name+'_max', tf.reduce_max(var))
         tf.summary.scalar(name+'_min', tf.reduce_min(var))
         tf.summary.histogram(name+'_histogram', var)
+
+    def emb_visual(self):
+        self.projector_conf = projector.ProjectorConfig()
+        embedding = self.projector_conf.embeddings.add()
+        embedding.tensor_name = self.emb.name
+        embedding.metadata_path = self.config['metafile']
+        #swriter = tf.summary.FileWriter(outfile)
+        #projector.visualize_embeddings(swriter,config)
 
 def read_data(train_filename):
     data = DataReader.read_file(train_filename,True)
@@ -188,7 +209,10 @@ def read_data(train_filename):
 
     return train_data,test_data,id2word,word2id
 
-
+def embeding_meta(word2id,metafile):
+    with open(metafile,'w') as f:
+        for word in word2id.keys():
+            f.write(word+'\n')
 
 
 if __name__ == "__main__":
@@ -214,8 +238,12 @@ if __name__ == "__main__":
         'thr':0.5,
         'out_path':'./out',
         'check_step':1000,
-        'test_step' : 1000
+        'test_step' : 1000,
+        'metafile' : './metafile'
     }
+
+    embeding_meta(word2id,config['metafile'])
 
     cnn = Cnn_text_classifier(tf.Session(),config)
     cnn.train(train_set,valid_set)
+    #cnn.emb_visual(config['out_path']+'/train_summary')

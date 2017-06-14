@@ -85,6 +85,8 @@ class DataReader(object):
             id2word[i+2] = words[i]
             word2id[words[i]] = i+2
 
+
+
         return id2word,word2id
 
     #data_x是包含所有句子单词列表的列表,返回是这些词替换为对应id的结果.所有句子都统一到同一个长度
@@ -125,12 +127,13 @@ class DataReader(object):
         return {'x':train_x,'y':train_y,'id':train_id},{'x':test_x,'y':test_y,'id':test_id}
 
     @staticmethod
-    def batch_iter(data_x,data_y, batch_size, num_epochs, shuffle=True):
+    def batch_iter(data_x,data_y=None, batch_size=64, num_epochs=1, shuffle=True):
         """
         Generates a batch iterator for a dataset.
         """
         data_x = np.array(data_x)
-        data_y = np.array(data_y)
+        if data_y:
+            data_y = np.array(data_y)
         data_size = len(data_x)
         num_batches_per_epoch = int((len(data_x)-1)/batch_size) + 1
         for epoch in range(num_epochs):
@@ -138,14 +141,19 @@ class DataReader(object):
             if shuffle:
                 shuffle_indices = np.random.permutation(np.arange(data_size))
                 shuffled_x = data_x[shuffle_indices]
-                shuffled_y = data_y[shuffle_indices]
+                if data_y:
+                    shuffled_y = data_y[shuffle_indices]
             else:
                 shuffled_x = data_x
-                shuffled_y = data_y
+                if data_y:
+                    shuffled_y = data_y
             for batch_num in range(num_batches_per_epoch):
                 start_index = batch_num * batch_size
                 end_index = min((batch_num + 1) * batch_size, data_size)
-                yield (shuffled_x[start_index:end_index],shuffled_y[start_index:end_index])
+                if data_y :
+                    yield (shuffled_x[start_index:end_index],shuffled_y[start_index:end_index])
+                else:
+                    yield (shuffled_x[start_index:end_index])
 
     @staticmethod
     def static_sentence_len(sentences):
@@ -165,6 +173,12 @@ class DataReader(object):
         print("len >= %d : %d" %((bin_max-1)*10,bins[bin_max-1]))
 
     @staticmethod
+    def static_pn_rate(labels):
+        sum = len(labels)
+        p = np.sum(labels)
+        print ("%d postive samples of %d samples (%f)" %(p,sum,p/sum))
+
+    @staticmethod
     def load_dict(file_prefix):
         #emb = pickle.load(file_prefix+'_emb')
         word2id = pickle.load(open(file_prefix+'_word2id','r'))
@@ -177,6 +191,7 @@ class DataReader(object):
         id2word,word2id = DataReader.build_dict(data['samples'],0.8);
 
         DataReader.static_sentence_len(data['samples'].values())
+        DataReader.static_pn_rate(data['labels'].values())
 
         #max_len = max([len(x) for x in data['samples'].values()])
         max_len =500

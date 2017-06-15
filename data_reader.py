@@ -218,6 +218,29 @@ class DataReader(object):
         return train_data,test_data,id2word,word2id
 
     @staticmethod
+    def read_test_data(test_filename,dict_prifix,out_prefix):
+        data = DataReader.read_file(test_filename,False)
+        #id2word = pickle.load(open(dict_prifix+'_id2word','r'))
+        word2id = pickle.load(open(dict_prifix+'_word2id','r'))
+
+
+        DataReader.static_sentence_len(data['samples'].values())
+
+        test_x = data['samples'].values()
+        max_len =500
+
+        test_data = DataReader.parse2index(test_x,word2id,max_len)
+        pickle.dump(test_data,open(out_prefix+'_test_data','w'),True)
+        pickle.dump(data['samples'].keys(),open(out_prefix+'_test_id','w'),True)
+        #max_len = max([len(x) for x in data['samples'].values()])
+
+
+        #print("train_data:")
+        #print(train_data)
+
+        return test_data,word2id
+
+    @staticmethod
     def load_data(file_prefix):
         train_data = pickle.load(open(file_prefix+'_train_data','r'))
         test_data = pickle.load(open(file_prefix+'_valid_data','r'))
@@ -225,7 +248,13 @@ class DataReader(object):
 
 
 if __name__ == "__main__":
-    filename = sys.argv[1]
-    out_prefix = sys.argv[2]
-    data = DataReader.read_data(filename,out_prefix)
-    #DataReader.buildDict(data)
+    opt = sys.argv[1]
+    if opt == 'train':
+        filename = sys.argv[2]
+        out_prefix = sys.argv[3]
+        data = DataReader.read_data(filename,out_prefix)
+    elif opt == 'test':
+        filename = sys.argv[2]
+        out_prefix = sys.argv[3]
+        dict_prifix = sys.argv[4]
+        data = DataReader.read_test_data(filename,dict_prifix,out_prefix)

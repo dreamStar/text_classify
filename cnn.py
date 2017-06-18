@@ -4,6 +4,7 @@ import tensorflow as tf
 from data_reader import DataReader
 import math
 import sys
+import os
 import numpy as np
 from tensorflow.contrib.tensorboard.plugins import projector
 
@@ -22,7 +23,12 @@ class Cnn_text_classifier(object):
         #self.drop_out_keep_prob = tf.constant(config['drop_out_keep_prob']);
         #通过输入向量查找embedding
         with tf.device('/cpu:0'), tf.name_scope("embeding"):
-            self.emb = tf.Variable(tf.random_uniform([config['vocab_size'],config['emb_dim']],-1.0,1.0))
+            if self.config['emb'] is None:
+                print("use trainable embedding")
+                self.emb = tf.Variable(tf.random_uniform([config['vocab_size'],config['emb_dim']],-1.0,1.0))
+            else :
+                print("use word2vec embedding")
+                self.emb = tf.Variable(self.config['emb'],trainable = False,name = 'emb')
             emb_x = tf.nn.embedding_lookup(self.emb,self.input_x)
             emb_x_expand = tf.expand_dims(emb_x,-1)
 
@@ -154,7 +160,7 @@ class Cnn_text_classifier(object):
         self.sess.run(tf.global_variables_initializer())
         self.sess.run(tf.local_variables_initializer())
 
-        batches = DataReader.batch_iter(train_set['x'],train_set['y'],self.config['batch_size'],self.config['epoch'])
+        batches = DataReader.batch_iter(train_set['x'],data_y=train_set['y'],batch_size=self.config['batch_size'],num_epochs=self.config['epoch'])
         cnt = 0
         for (batch_x,batch_y) in batches:
             cnt += 1
@@ -219,16 +225,26 @@ if __name__ == "__main__":
     #train_filename = sys.argv[1]
     #test_filename = sys.argv[2]
     #train_set,test_set,id2word,word2id = read_data(train_filename)
-    obj_prefix = sys.argv[1]
+    out_path = sys.argv[1]
+    dict_prefix = sys.argv[2]
+    data_prefix = sys.argv[3]
+    emb_prefix = None
+    if len(sys.argv) == 5:
+        emb_prefix = sys.argv[4]
+        emb = DataReader.load_word2vec(emb_prefix)
 
-    word2id,id2word = DataReader.load_dict(obj_prefix)
-    train_set,valid_set = DataReader.load_data(obj_prefix)
+
+    word2id,id2word = DataReader.load_dict(dict_prefix)
+    train_set,valid_set = DataReader.load_data(data_prefix)
+
+    if not os.path.exists(out_path):
+      os.makedirs(out_path)
 
     #seq_len = max([len(x) for x in train_set['x']])
 
     config = {
         'drop_out_keep_prob' : 0.5,
-        'emb_dim' : 128,
+        'emb_dim' : 200,
         'vocab_size' : len(word2id),
         'seq_len' : 500,
         'filter_sizes': [3,4,5],
@@ -236,12 +252,18 @@ if __name__ == "__main__":
         'epoch':200,
         'batch_size':64,
         'thr':0.5,
-        'out_path':'./out',
+        'out_path':out_path,
         'check_step':1000,
         'test_step' : 1000,
-        'metafile' : './metafile'
+        'metafile' : out_path
     }
 
+    if emb_prefix != None:
+        config['emb'] = emb
+
+
+
+    # 输出embedding meta以供tensorboard调取
     embeding_meta(word2id,config['metafile'])
 
     cnn = Cnn_text_classifier(tf.Session(),config)

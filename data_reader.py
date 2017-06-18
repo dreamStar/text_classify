@@ -11,9 +11,10 @@ import math
 import random
 import numpy as np
 import cPickle as pickle
+import os
 
-unknown_sym = "<unknown>"
-padding_sym = "<pading>"
+unknown_sym = "UNK"
+padding_sym = "UNK"
 
 class Options(object):
     def __init__(self):
@@ -93,11 +94,19 @@ class DataReader(object):
     @staticmethod
     def parse2index(data_x,word2id,sentence_len=0):
         ret = []
+        unk_cnt = 0
+        word_cnt = 0
+        print("sentence_len:%d"%sentence_len)
         for sentence in data_x:
             id_array = map(lambda w: word2id[w] if w in word2id else word2id[unknown_sym], sentence)
+            for w in sentence:
+                word_cnt += 1
+                if not w in word2id:
+                    unk_cnt += 1
             if sentence_len > 0 :
                 id_array = id_array + [word2id[padding_sym]] * (sentence_len - len(id_array)) if sentence_len > len(id_array) else id_array[0:sentence_len]
             ret.append(id_array)
+        print("%d unknown words in %d words"%(unk_cnt,word_cnt))
 
         return ret
 
@@ -132,7 +141,7 @@ class DataReader(object):
         Generates a batch iterator for a dataset.
         """
         data_x = np.array(data_x)
-        if data_y:
+        if not data_y is None:
             data_y = np.array(data_y)
         data_size = len(data_x)
         num_batches_per_epoch = int((len(data_x)-1)/batch_size) + 1
@@ -141,16 +150,16 @@ class DataReader(object):
             if shuffle:
                 shuffle_indices = np.random.permutation(np.arange(data_size))
                 shuffled_x = data_x[shuffle_indices]
-                if data_y:
+                if not data_y is None:
                     shuffled_y = data_y[shuffle_indices]
             else:
                 shuffled_x = data_x
-                if data_y:
+                if not data_y is None:
                     shuffled_y = data_y
             for batch_num in range(num_batches_per_epoch):
                 start_index = batch_num * batch_size
                 end_index = min((batch_num + 1) * batch_size, data_size)
-                if data_y :
+                if not data_y is None:
                     yield (shuffled_x[start_index:end_index],shuffled_y[start_index:end_index])
                 else:
                     yield (shuffled_x[start_index:end_index])
@@ -186,15 +195,24 @@ class DataReader(object):
         return word2id,id2word
 
     @staticmethod
-    def read_data(train_filename,out_prefix):
+    def read_data(train_filename,out_prefix,seq_len,input_prefix=None):
+        print("params:")
+        print(train_filename)
+        print(out_prefix)
+        print(seq_len)
+        print(input_prefix)
         data = DataReader.read_file(train_filename,True)
-        id2word,word2id = DataReader.build_dict(data['samples'],0.8);
+        if input_prefix is None:
+            id2word,word2id = DataReader.build_dict(data['samples'],0.8);
+        else:
+            id2word = pickle.load(open(input_prefix+'_id2word','r'))
+            word2id = pickle.load(open(input_prefix+'_word2id','r'))
 
         DataReader.static_sentence_len(data['samples'].values())
         DataReader.static_pn_rate(data['labels'].values())
 
         #max_len = max([len(x) for x in data['samples'].values()])
-        max_len =500
+        max_len = int(seq_len)
 
         train_data , test_data = DataReader.split_data(data['samples'],data['labels'])
 
@@ -218,7 +236,7 @@ class DataReader(object):
         return train_data,test_data,id2word,word2id
 
     @staticmethod
-    def read_test_data(test_filename,dict_prifix,out_prefix):
+    def read_test_data(test_filename,dict_prifix,out_prefix,seq_len):
         data = DataReader.read_file(test_filename,False)
         #id2word = pickle.load(open(dict_prifix+'_id2word','r'))
         word2id = pickle.load(open(dict_prifix+'_word2id','r'))
@@ -227,7 +245,7 @@ class DataReader(object):
         DataReader.static_sentence_len(data['samples'].values())
 
         test_x = data['samples'].values()
-        max_len =500
+        max_len = int(seq_len)
 
         test_data = DataReader.parse2index(test_x,word2id,max_len)
         pickle.dump(test_data,open(out_prefix+'_test_data','w'),True)
@@ -241,6 +259,11 @@ class DataReader(object):
         return test_data,word2id
 
     @staticmethod
+    def load_word2vec(prefix):
+        emb = pickle.load(open(prefix+'_emb','r'))
+        return emb
+
+    @staticmethod
     def load_data(file_prefix):
         train_data = pickle.load(open(file_prefix+'_train_data','r'))
         test_data = pickle.load(open(file_prefix+'_valid_data','r'))
@@ -252,9 +275,14 @@ if __name__ == "__main__":
     if opt == 'train':
         filename = sys.argv[2]
         out_prefix = sys.argv[3]
-        data = DataReader.read_data(filename,out_prefix)
+        seq_len = sys.argv[4]
+        dict_prefix = None
+        if len(sys.argv) == 6:
+            dict_prefix = sys.argv[5]
+        data = DataReader.read_data(filename,out_prefix,seq_len,dict_prefix)
     elif opt == 'test':
         filename = sys.argv[2]
         out_prefix = sys.argv[3]
         dict_prifix = sys.argv[4]
-        data = DataReader.read_test_data(filename,dict_prifix,out_prefix)
+        seq_len = sys.argv[5]
+        data = DataReader.read_test_data(filename,dict_prifix,out_prefix,seq_len)
